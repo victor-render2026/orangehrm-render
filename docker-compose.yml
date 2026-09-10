@@ -1,0 +1,43 @@
+version: "3.8"
+
+services:
+  orangehrm-db:
+    image: mariadb:10.11.4
+    container_name: orangehrm-db
+    environment:
+      MYSQL_DATABASE: orangehrm
+      MYSQL_USER: orangehrm
+      MYSQL_PASSWORD: orangehrm_pass
+      MYSQL_ROOT_PASSWORD: rootpass
+    volumes:
+      - orangehrm-db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-P", "3306", "-prootpass"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  orangehrm:
+    build:
+      context: .
+      dockerfile: Dockerfile.render
+    container_name: orangehrm
+    ports:
+      - "8080:80"
+    environment:
+      ORANGEHRM_DATABASE_NAME: orangehrm
+      ORANGEHRM_DATABASE_USER: orangehrm
+      ORANGEHRM_DATABASE_PASSWORD: orangehrm_pass
+      ORANGEHRM_PASSWORD: Orangehrm@2026
+      ORANGEHRM_USERNAME: admin
+    volumes:
+      - orangehrm-data:/var/www/html
+    depends_on:
+      orangehrm-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  orangehrm-db-data:
+  orangehrm-data:

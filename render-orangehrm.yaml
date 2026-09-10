@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: orangehrm-app
+    runtime: docker
+    repo: https://github.com/victor-render2026/orangehrm-render
+    branch: main
+    dockerfilePath: Dockerfile.render
+    plan: free
+    envVars:
+      - key: ORANGEHRM_DATABASE_HOST
+        value: "127.0.0.1"
+      - key: ORANGEHRM_DATABASE_NAME
+        value: orangehrm
+      - key: ORANGEHRM_DATABASE_USER
+        value: orangehrm
+      - key: ORANGEHRM_DATABASE_PASSWORD
+        value: orangehrm_pass
+      - key: ORANGEHRM_PASSWORD
+        value: Orangehrm@2026
+      - key: ORANGEHRM_USERNAME
+        value: admin
+      - key: PORT
+        value: "80"
+    autoDeploy: true
