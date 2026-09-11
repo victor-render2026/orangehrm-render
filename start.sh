@@ -1,110 +1,85 @@
 #!/bin/bash
 set -e
 
-# Diagnostic page: tests DNS + TCP + PDO (plain/SSL) to Aiven MySQL.
-# Password is NOT baked in — pass via ?pass= query param.
-cat > /var/www/html/aiven-test.php <<'PHPEOF'
+APP_ROOT=/var/www/html
+CONF_FILE=$APP_ROOT/lib/confs/Conf.php
+KEY_FILE=$APP_ROOT/lib/confs/cryptokeys/key.ohrm
+
+# Remove one-time debug pages
+rm -f $APP_ROOT/aiven-test.php $APP_ROOT/install-log.php $APP_ROOT/db-test.php
+
+# Container filesystem is ephemeral: restore Conf.php from env if missing
+if [ ! -f "$CONF_FILE" ]; then
+    if [ -z "$OHRM_DB_PASS" ]; then
+        echo "WARNING: $CONF_FILE missing and OHRM_DB_PASS not set; app will show installer."
+    else
+        H="${OHRM_DB_HOST:-mysql-339a7caa-orangehrm-db.a.aivencloud.com}"
+        P="${OHRM_DB_PORT:-23149}"
+        N="${OHRM_DB_NAME:-orangehrm}"
+        U="${OHRM_DB_USER:-avnadmin}"
+        esc() { printf '%s' "$1" | sed "s/\\\\/\\\\\\\\/g; s/'/\\\\'/g"; }
+        mkdir -p "$(dirname "$CONF_FILE")"
+        cat > "$CONF_FILE" <<EOF
 <?php
-header('Content-Type: text/plain; charset=utf-8');
-$host = $_GET['host'] ?? 'mysql-339a7caa-orangehrm-db.a.aivencloud.com';
-$port = (int)($_GET['port'] ?? 23149);
-$user = $_GET['user'] ?? 'avnadmin';
-$db   = $_GET['db'] ?? 'defaultdb';
-$pass = $_GET['pass'] ?? '';
 
-echo "host=$host port=$port user=$user db=$db pass=" . ($pass === '' ? '(empty!)' : '(set, len ' . strlen($pass) . ')') . "\n\n";
+class Conf
+{
+    private string \$dbHost;
+    private string \$dbPort;
+    private string \$dbName;
+    private string \$dbUser;
+    private string \$dbPass;
 
-echo "[1] DNS:\n";
-$ip = gethostbyname($host);
-echo ($ip !== $host ? "OK $ip" : "FAIL (unresolved)") . "\n\n";
-
-echo "[2] TCP fsockopen (10s):\n";
-$fp = @fsockopen($host, $port, $errno, $errstr, 10);
-echo ($fp ? "OK connected" : "FAIL $errno $errstr") . "\n";
-if ($fp) {
-    fclose($fp);
-}
-echo "\n";
-
-if ($pass === '') {
-    echo "Add ?pass=YOUR_AIVEN_PASSWORD to run PDO tests.\n";
-    exit;
-}
-
-echo "[3] PDO plain:\n";
-try {
-    $pdo = new PDO(
-        "mysql:host=$host;port=$port;dbname=$db;charset=utf8mb4",
-        $user,
-        $pass,
-        [PDO::ATTR_TIMEOUT => 10, PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
-    );
-    echo "OK " . $pdo->query('SELECT VERSION()')->fetchColumn() . "\n";
-} catch (Throwable $e) {
-    echo "FAIL [" . $e->getCode() . "] " . $e->getMessage() . "\n";
-}
-
-echo "\n[4] PDO SSL (system CA, verify off):\n";
-try {
-    $pdo = new PDO(
-        "mysql:host=$host;port=$port;dbname=$db;charset=utf8mb4",
-        $user,
-        $pass,
-        [
-            PDO::ATTR_TIMEOUT => 10,
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::MYSQL_ATTR_SSL_CA => '/etc/ssl/certs/ca-certificates.crt',
-            PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => false,
-        ]
-    );
-    echo "OK " . $pdo->query('SELECT VERSION()')->fetchColumn() . "\n";
-} catch (Throwable $e) {
-    echo "FAIL [" . $e->getCode() . "] " . $e->getMessage() . "\n";
-}
-
-echo "\n[5] PHP " . PHP_VERSION
-    . " pdo_mysql=" . (extension_loaded('pdo_mysql') ? 'yes' : 'NO')
-    . " openssl=" . (extension_loaded('openssl') ? 'yes' : 'NO')
-    . " ca_bundle=" . (file_exists('/etc/ssl/certs/ca-certificates.crt') ? 'yes' : 'NO') . "\n";
-PHPEOF
-
-# Log viewer: tails installer/app logs. Protected by ?key=. Remove after install.
-cat > /var/www/html/install-log.php <<'PHPEOF'
-<?php
-header('Content-Type: text/plain; charset=utf-8');
-if (($_GET['key'] ?? '') !== 'ohrm-debug-2026') {
-    http_response_code(403);
-    echo "forbidden\n";
-    exit;
-}
-$candidates = [
-    '/var/www/html/src/log',
-    '/var/www/html/log',
-    '/var/www/html/installer/log',
-];
-foreach ($candidates as $dir) {
-    echo "=== $dir ===\n";
-    if (!is_dir($dir)) {
-        echo "(no dir)\n\n";
-        continue;
+    public function __construct()
+    {
+        \$this->dbHost = '$(esc "$H")';
+        \$this->dbPort = '$(esc "$P")';
+        \$this->dbName = '$(esc "$N")';
+        \$this->dbUser = '$(esc "$U")';
+        \$this->dbPass = '$(esc "$OHRM_DB_PASS")';
     }
-    $files = glob($dir . '/*.log');
-    if (!$files) {
-        echo "(no .log files)\n\n";
-        continue;
-    }
-    foreach ($files as $f) {
-        echo "--- " . basename($f) . " (" . filesize($f) . " bytes, mtime " . date('c', filemtime($f)) . ") ---\n";
-        $lines = file($f, FILE_IGNORE_NEW_LINES);
-        if ($lines === false) {
-            echo "(unreadable)\n";
-            continue;
-        }
-        echo implode("\n", array_slice($lines, -120)) . "\n";
-    }
-    echo "\n";
-}
-PHPEOF
 
-echo "Starting OrangeHRM (no local database)..."
+    public function getDbHost(): string
+    {
+        return \$this->dbHost;
+    }
+
+    public function getDbPort(): string
+    {
+        return \$this->dbPort;
+    }
+
+    public function getDbName(): string
+    {
+        return \$this->dbName;
+    }
+
+    public function getDbUser(): string
+    {
+        return \$this->dbUser;
+    }
+
+    public function getDbPass(): string
+    {
+        return \$this->dbPass;
+    }
+}
+EOF
+        echo "Conf.php restored from env."
+    fi
+fi
+
+# Restore crypto key if missing (128 hex chars, same format as installer)
+if [ ! -f "$KEY_FILE" ]; then
+    mkdir -p "$(dirname "$KEY_FILE")"
+    if [ -n "$OHRM_CRYPTO_KEY" ]; then
+        printf '%s' "$OHRM_CRYPTO_KEY" > "$KEY_FILE"
+    else
+        openssl rand -hex 64 | tr -d '\n' > "$KEY_FILE"
+    fi
+    chmod 600 "$KEY_FILE"
+    echo "key.ohrm restored."
+fi
+
+echo "Starting OrangeHRM..."
 exec apache2ctl -D FOREGROUND

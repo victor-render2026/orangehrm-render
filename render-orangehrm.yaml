@@ -9,4 +9,14 @@ services:
     envVars:
       - key: PORT
         value: "80"
+      - key: OHRM_DB_HOST
+        value: mysql-339a7caa-orangehrm-db.a.aivencloud.com
+      - key: OHRM_DB_PORT
+        value: "23149"
+      - key: OHRM_DB_NAME
+        value: orangehrm
+      - key: OHRM_DB_USER
+        value: avnadmin
+      - key: OHRM_DB_PASS
+        sync: false
     autoDeploy: true
