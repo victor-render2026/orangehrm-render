@@ -68,5 +68,43 @@ echo "\n[5] PHP " . PHP_VERSION
     . " ca_bundle=" . (file_exists('/etc/ssl/certs/ca-certificates.crt') ? 'yes' : 'NO') . "\n";
 PHPEOF
 
+# Log viewer: tails installer/app logs. Protected by ?key=. Remove after install.
+cat > /var/www/html/install-log.php <<'PHPEOF'
+<?php
+header('Content-Type: text/plain; charset=utf-8');
+if (($_GET['key'] ?? '') !== 'ohrm-debug-2026') {
+    http_response_code(403);
+    echo "forbidden\n";
+    exit;
+}
+$candidates = [
+    '/var/www/html/src/log',
+    '/var/www/html/log',
+    '/var/www/html/installer/log',
+];
+foreach ($candidates as $dir) {
+    echo "=== $dir ===\n";
+    if (!is_dir($dir)) {
+        echo "(no dir)\n\n";
+        continue;
+    }
+    $files = glob($dir . '/*.log');
+    if (!$files) {
+        echo "(no .log files)\n\n";
+        continue;
+    }
+    foreach ($files as $f) {
+        echo "--- " . basename($f) . " (" . filesize($f) . " bytes, mtime " . date('c', filemtime($f)) . ") ---\n";
+        $lines = file($f, FILE_IGNORE_NEW_LINES);
+        if ($lines === false) {
+            echo "(unreadable)\n";
+            continue;
+        }
+        echo implode("\n", array_slice($lines, -120)) . "\n";
+    }
+    echo "\n";
+}
+PHPEOF
+
 echo "Starting OrangeHRM (no local database)..."
 exec apache2ctl -D FOREGROUND
