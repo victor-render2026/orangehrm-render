@@ -77,8 +77,15 @@ if [ ! -f "$KEY_FILE" ]; then
     else
         openssl rand -hex 64 | tr -d '\n' > "$KEY_FILE"
     fi
-    chmod 600 "$KEY_FILE"
+    # Apache runs as www-data: must be able to read both files
+    chown www-data:www-data "$KEY_FILE" 2>/dev/null || true
+    chmod 644 "$KEY_FILE"
     echo "key.ohrm restored."
+fi
+
+if [ -f "$CONF_FILE" ]; then
+    chown www-data:www-data "$CONF_FILE" 2>/dev/null || true
+    chmod 644 "$CONF_FILE"
 fi
 
 echo "Starting OrangeHRM..."
